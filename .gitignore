@@ -1,0 +1,13 @@
+# files anywhere
+.DS_Store
+desktop.ini
+Thumbs.db
+*.iml
+*.pyc
+
+# folders anywhere
+.idea/
+.venv/
+__pycache__/
+.vs/
+
