@@ -85,8 +85,8 @@ struct EventMessage : ProtocolMessage
 		CLASS_BASE(ProtocolMessage),
 
 		CLASS_FIELDS(
-			CLASS_NAMED_FIELD(eventType, "event", Serialization::RequiredFieldAttribute{}),
-			CLASS_FIELD(body)
+			CLASS_NAMED_FIELD(eventType, "event", Serialization::RequiredFieldAttribute{})
+			// CLASS_FIELD(body)
 		)
 	)
 #pragma endregion
@@ -96,11 +96,36 @@ struct EventMessage : ProtocolMessage
 	*/
 	std::string eventType;
 
-	/**
-		Event-specific information.
-	*/
-	RuntimeValue::Ptr body;
+	///**
+	//	Event-specific information.
+	//*/
+	//RuntimeValue::Ptr body;
+
+	EventMessage () = default;
+
+	EventMessage (unsigned messageSeq, std::string_view);
 };
+
+
+
+template<typename Body = RuntimeValue::Ptr>
+struct GenericEventMessage : EventMessage
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_BASE(EventMessage),
+
+		CLASS_FIELDS(
+			CLASS_FIELD(body)
+		)
+	)
+#pragma endregion
+
+	using EventMessage::EventMessage;
+
+	Body body;
+};
+
 
 /**
 	Response for a request.
@@ -155,7 +180,9 @@ struct ResponseMessage : ProtocolMessage
 	ResponseMessage& SetError(std::string_view errorMessage);
 };
 
-struct GenericResponse : ResponseMessage
+
+template<typename Body = RuntimeValue::Ptr>
+struct GenericResponseMessage : ResponseMessage
 {
 #pragma region Class info
 	CLASS_INFO(
@@ -169,18 +196,17 @@ struct GenericResponse : ResponseMessage
 
 	using ResponseMessage::ResponseMessage;
 
-	/**
-		Contains request result if success is true and optional error details if success is false.
-	*/
-	RuntimeValue::Ptr body;
+	/* Contains request result if success is true and optional error details if success is false. 	*/
+	Body body;
 };
+
 
 
 /**
 	The checksum of an item calculated by the specified algorithm.
 */
-struct Checksum {
-
+struct Checksum
+{
 #pragma region Class info
 	CLASS_INFO(
 		CLASS_FIELDS(
@@ -200,6 +226,66 @@ struct Checksum {
 		Value of the checksum.
 	*/
 	std::string checksum;
+};
+
+
+/* Provides formatting information for a value. */
+struct ValueFormat
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(hex)
+		)
+	)
+#pragma endregion
+
+	/* Display the value in hex. */
+	std::optional<bool> hex;
+};
+
+
+/**
+	Provides formatting information for a stack frame.
+*/
+struct StackFrameFormat : ValueFormat
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_BASE(ValueFormat),
+
+		CLASS_FIELDS(
+			CLASS_FIELD(parameters),
+			CLASS_FIELD(parameterTypes),
+			CLASS_FIELD(parameterNames),
+			CLASS_FIELD(parameterValues),
+			CLASS_FIELD(line),
+			CLASS_FIELD(module),
+			CLASS_FIELD(includeAll)
+		)
+	)
+#pragma endregion
+
+	/* Displays parameters for the stack frame. */
+	std::optional<bool> parameters;
+
+	/* Displays the types of parameters for the stack frame. */
+	std::optional<bool> parameterTypes;
+
+	/* Displays the names of parameters for the stack frame. */
+	std::optional<bool> parameterNames;
+
+	/* Displays the values of parameters for the stack frame. */
+	std::optional<bool> parameterValues;
+
+	/* Displays the line number of the stack frame. */
+	std::optional<bool> line;
+
+	/* Displays the module of the stack frame. */
+	std::optional<bool> module;
+
+	/* Includes all stack frames, including those the debug adapter might otherwise hide. */
+	std::optional<bool> includeAll;
 };
 
 /**
@@ -269,6 +355,10 @@ struct Source {
 		The checksums associated with this file.
 	*/
 	std::vector<Checksum>checksums;
+
+	Source() = default;
+
+	Source(std::string_view sourcePath);
 };
 
 /**
@@ -294,7 +384,7 @@ struct Breakpoint
 #pragma endregion
 
 	/* An optional identifier for the breakpoint. It is needed if breakpoint events are used to update or remove breakpoints. */
-	std::optional<int> id;
+	std::optional<unsigned> id;
 
 	/* If true breakpoint could be set (but not necessarily at the desired location). */
 	bool verified;
@@ -382,6 +472,31 @@ struct SourceBreakpoint
 };
 
 
+/**
+*
+*/
+struct Thread
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(id),
+			CLASS_FIELD(name)
+		)
+	)
+#pragma endregion
+
+	/* Unique identifier for the thread. */
+	unsigned id = 0;
+
+ /* A name of the thread. */
+	std::string name;
+
+	Thread() = default;
+
+	Thread(unsigned threadId, std::string_view threadName);
+};
+
 
 
 /**
@@ -438,19 +553,510 @@ CLASS_INFO(
 };
 
 
-struct SetBreakpointsResponse : ResponseMessage
+//struct SetBreakpointsResponse : ResponseMessage
+//{
+//#pragma region Class info
+//	CLASS_INFO(
+//		CLASS_BASE(ResponseMessage),
+//
+//		CLASS_FIELDS(
+//			CLASS_FIELD(body)
+//		)
+//	)
+//#pragma endregion
+//
+//	 // using ResponseMessage::ResponseMessage;
+//	SetBreakpointsResponseBody body;
+//};
+
+
+struct ThreadsResponseBody
 {
 #pragma region Class info
 	CLASS_INFO(
-		CLASS_BASE(ResponseMessage),
-
 		CLASS_FIELDS(
-			CLASS_FIELD(body)
+			CLASS_FIELD(threads)
 		)
 	)
 #pragma endregion
-	 // using ResponseMessage::ResponseMessage;
-	SetBreakpointsResponseBody body;
+
+	std::vector<Thread> threads;
+};
+
+
+
+ /**
+	Event message for 'stopped' event type.
+	The event indicates that the execution of the debuggee has stopped due to some condition.
+	This can be caused by a break point previously set, a stepping request has completed, by executing a debugger statement etc.
+*/
+struct StoppedEventBody
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(reason),
+			CLASS_FIELD(description),
+			CLASS_FIELD(threadId),
+			CLASS_FIELD(preserveFocusHint),
+			CLASS_FIELD(text),
+			CLASS_FIELD(allThreadsStopped),
+			CLASS_FIELD(hitBreakpointIds)
+		)
+	)
+#pragma endregion
+
+	/**
+		The reason for the event.
+		For backward compatibility this string is shown in the UI if the 'description' attribute is missing (but it must not be translated).
+		Values: 'step', 'breakpoint', 'exception', 'pause', 'entry', 'goto', 'function breakpoint', 'data breakpoint', 'instruction breakpoint', etc.
+	*/
+	std::string reason;
+
+	/* The full reason for the event, e.g. 'Paused on exception'. This string is shown in the UI as is and must be translated. */
+	std::optional<std::string> description;
+
+	/* The thread which was stopped. */
+	std::optional<unsigned> threadId;
+
+	/* A value of true hints to the frontend that this event should not change the focus. */
+	std::optional<bool> preserveFocusHint;
+
+	/* Additional information. E.g. if reason is 'exception', text contains the exception name. This string is shown in the UI. */
+	std::optional<std::string> text;
+
+	/**
+		If 'allThreadsStopped' is true, a debug adapter can announce that all threads have stopped.
+			- The client should use this information to enable that all threads can be expanded to access their stacktraces.
+			- If the attribute is missing or false, only the thread with the given threadId can be expanded.
+	*/
+	std::optional<bool> allThreadsStopped;
+
+	/**
+		Ids of the breakpoints that triggered the event. In most cases there will be only a single breakpoint but here are some examples for multiple breakpoints:
+			- Different types of breakpoints map to the same location.
+			- Multiple source breakpoints get collapsed to the same instruction by the compiler/runtime.
+			- Multiple function breakpoints with different function names map to the same location.
+	*/
+	std::optional<std::vector<unsigned>> hitBreakpointIds;
+};
+
+
+/**
+	Arguments for 'stackTrace' request.
+*/
+struct StackTraceArguments
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(threadId),
+			CLASS_FIELD(startFrame),
+			CLASS_FIELD(levels),
+			CLASS_FIELD(format)
+		)
+	)
+#pragma endregion
+
+	/* Retrieve the stacktrace for this thread. */
+	unsigned threadId;
+
+	/* The index of the first frame to return; if omitted frames start at 0. */
+	std::optional<unsigned> startFrame;
+
+	/* The maximum number of frames to return. If levels is not specified or 0, all frames are returned. */
+	std::optional<unsigned> levels;
+
+	/*
+		Specifies details on how to format the stack frames.
+		The attribute is only honored by a debug adapter if the capability 'supportsValueFormattingOptions' is true.
+	*/
+	std::optional<StackFrameFormat> format;
+};
+
+
+/**
+	A Stackframe contains the source location.
+*/
+struct StackFrame
+{
+
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(id),
+			CLASS_FIELD(name),
+			CLASS_FIELD(source),
+			CLASS_FIELD(line),
+			CLASS_FIELD(column),
+			CLASS_FIELD(endLine),
+		)
+	)
+#pragma endregion
+
+		/**
+			An identifier for the stack frame. It must be unique across all threads.
+			This id can be used to retrieve the scopes of the frame with the 'scopesRequest' or to restart the execution of a stackframe.
+		*/
+		unsigned id;
+
+		/* The name of the stack frame, typically a method name. */
+		std::string name;
+
+		/* The optional source of the frame. */
+		std::optional<Source> source;
+
+		/* The line within the file of the frame. If source is null or doesn't exist, line is 0 and must be ignored. */
+		unsigned line = 0;
+
+		/* The column within the line. If source is null or doesn't exist, column is 0 and must be ignored. */
+		unsigned column = 0;
+
+		/* An optional end line of the range covered by the stack frame. */
+		std::optional<unsigned> endLine;
+
+		/* An optional end column of the range covered by the stack frame. */
+		std::optional<unsigned> endColumn;
+
+		/* Indicates whether this frame can be restarted with the 'restart' request. Clients should only use this if the debug adapter supports the 'restart' request (capability 'supportsRestartRequest' is true). */
+		std::optional<bool> canRestart;
+
+		/* Optional memory reference for the current instruction pointer in this frame. */
+		std::optional<std::string> instructionPointerReference;
+
+		/* The module associated with this frame, if any. */
+		std::optional<std::string> moduleId;
+
+		/**
+			An optional hint for how to present this frame in the UI.
+			A value of 'label' can be used to indicate that the frame is an artificial frame that is used as a visual label or separator. A value of 'subtle' can be used to change the appearance of a frame in a 'subtle' way.
+			'normal' | 'label' | 'subtle'
+		*/
+		std::optional<std::string> presentationHint;
+
+
+		StackFrame() = default;
+
+		StackFrame(unsigned frameId, std::string_view frameName);
+};
+
+
+/**
+	Response to 'stackTrace' request.
+*/
+struct StackTraceResponseBody
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(stackFrames),
+			CLASS_FIELD(totalFrames)
+		)
+	)
+#pragma endregion
+
+	/** 
+		The frames of the stackframe. If the array has length zero, there are no stackframes available.
+		This means that there is no location information available.
+	*/
+	std::vector<StackFrame> stackFrames;
+
+	/**
+		The total number of frames available in the stack.
+		If omitted or if totalFrames is larger than the available frames,
+		a client is expected to request frames until a request returns less frames than requested (which indicates the end of the stack).
+		Returning monotonically increasing totalFrames values for subsequent requests can be used to enforce paging in the client.
+	*/
+	std::optional<unsigned> totalFrames;
+};
+
+/**
+	Arguments for 'scopes' request.
+*/
+struct ScopesArguments
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(frameId)
+		)
+	)
+#pragma endregion
+
+	/* Retrieve the scopes for this stackframe. */
+	unsigned frameId;
+};
+
+
+/**
+	A Scope is a named container for variables. Optionally a scope can map to a source or a range within a source.
+*/
+struct Scope
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(name),
+			CLASS_FIELD(presentationHint),
+			CLASS_FIELD(variablesReference),
+			CLASS_FIELD(namedVariables),
+			CLASS_FIELD(indexedVariables),
+			CLASS_FIELD(expensive),
+			CLASS_FIELD(source),
+			CLASS_FIELD(line),
+			CLASS_FIELD(column),
+			CLASS_FIELD(endLine),
+			CLASS_FIELD(endColumn)
+		)
+	)
+#pragma endregion
+
+	/* Name of the scope such as 'Arguments', 'Locals', or 'Registers'. This string is shown in the UI as is and can be translated. */
+	std::string name;
+
+	/** An optional hint for how to present this scope in the UI. If this attribute is missing, the scope is shown with a generic UI.
+			Values:
+			'arguments': Scope contains method arguments.
+			'locals': Scope contains local variables.
+			'registers': Scope contains registers. Only a single 'registers' scope should be returned from a 'scopes' request.
+			etc.
+			'arguments' | 'locals' | 'registers' | string;
+	*/
+	std::optional<std::string> presentationHint;
+
+	/* The variables of this scope can be retrieved by passing the value of variablesReference to the VariablesRequest. */
+	unsigned variablesReference;
+
+	/**
+		The number of named variables in this scope.
+		The client can use this optional information to present the variables in a paged UI and fetch them in chunks.
+	*/
+	std::optional<unsigned> namedVariables;
+
+	/** The number of indexed variables in this scope.
+			The client can use this optional information to present the variables in a paged UI and fetch them in chunks.
+	*/
+	std::optional<unsigned> indexedVariables;
+
+	/* If true, the number of variables in this scope is large or expensive to retrieve. */
+	bool expensive = false;
+
+	/* Optional source for this scope. */
+	std::optional<Source> source;
+
+	/* Optional start line of the range covered by this scope. */
+	std::optional<unsigned> line;
+
+	/* Optional start column of the range covered by this scope. */
+	std::optional<unsigned> column;
+
+	/* Optional end line of the range covered by this scope. */
+	std::optional<unsigned> endLine;
+
+	/* Optional end column of the range covered by this scope. */
+	std::optional<unsigned> endColumn;
+
+
+	Scope() = default;
+
+	Scope(std::string_view scopeName, unsigned varRef);
+};
+
+/**
+	Optional properties of a variable that can be used to determine how to render the variable in the UI.
+*/
+struct VariablePresentationHint
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(kind),
+			CLASS_FIELD(attributes),
+			CLASS_FIELD(visibility)
+		)
+	)
+#pragma endregion
+
+	/**
+		The kind of variable. Before introducing additional values, try to use the listed values.
+			Values:
+			'property': Indicates that the object is a property.
+			'method': Indicates that the object is a method.
+			'class': Indicates that the object is a class.
+			'data': Indicates that the object is data.
+			'event': Indicates that the object is an event.
+			'baseClass': Indicates that the object is a base class.
+			'innerClass': Indicates that the object is an inner class.
+			'interface': Indicates that the object is an interface.
+			'mostDerivedClass': Indicates that the object is the most derived class.
+			'virtual': Indicates that the object is virtual, that means it is a synthetic object introducedby the
+			adapter for rendering purposes, e.g. an index range for large arrays.
+			'dataBreakpoint': Deprecated: Indicates that a data breakpoint is registered for the object. The 'hasDataBreakpoint' attribute should generally be used instead.
+			etc.
+			'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint' | string;
+	*/
+	std::optional<std::string> kind;
+
+	/**
+		Set of attributes represented as an array of strings. Before introducing additional values, try to use the listed values.
+		Values:
+		'static': Indicates that the object is static.
+		'constant': Indicates that the object is a constant.
+		'readOnly': Indicates that the object is read only.
+		'rawString': Indicates that the object is a raw string.
+		'hasObjectId': Indicates that the object can have an Object ID created for it.
+		'canHaveObjectId': Indicates that the object has an Object ID associated with it.
+		'hasSideEffects': Indicates that the evaluation had side effects.
+		'hasDataBreakpoint': Indicates that the object has its value tracked by a data breakpoint.
+		etc.
+*/
+	std::optional<std::vector<std::string>> attributes;
+
+/** Visibility of variable. Before introducing additional values, try to use the listed values.
+		Values: 'public', 'private', 'protected', 'internal', 'final', etc.
+*/
+	std::optional<std::string> visibility;
+};
+
+
+/**
+	A Variable is a name/value pair.
+	Optionally a variable can have a 'type' that is shown if space permits or when hovering over the variable's name.
+	An optional 'kind' is used to render additional properties of the variable, e.g. different icons can be used to indicate that a variable is public or private.
+	If the value is structured (has children), a handle is provided to retrieve the children with the VariablesRequest.
+	If the number of named or indexed children is large, the numbers should be returned via the optional 'namedVariables' and 'indexedVariables' attributes.
+	The client can use this optional information to present the children in a paged UI and fetch them in chunks.
+*/
+struct Variable
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(name),
+			CLASS_FIELD(value),
+			CLASS_FIELD(type),
+			CLASS_FIELD(presentationHint),
+			CLASS_FIELD(evaluateName),
+			CLASS_FIELD(variablesReference),
+			CLASS_FIELD(namedVariables),
+			CLASS_FIELD(indexedVariables),
+			CLASS_FIELD(memoryReference)
+		)
+	)
+#pragma endregion
+
+	/* The variable's name. */
+	std::string name;
+
+	/* The variable's value. This can be a multi-line text, e.g. for a function the body of a function. */
+	std::string value;
+
+	/** 
+		The type of the variable's value. Typically shown in the UI when hovering over the value.
+		This attribute should only be returned by a debug adapter if the client has passed the value true for the 'supportsVariableType' capability of the 'initialize' request.
+	*/
+	std::optional<std::string> type;
+
+	/* Properties of a variable that can be used to determine how to render the variable in the UI. */
+	std::optional<VariablePresentationHint> presentationHint;
+
+	/* Optional evaluatable name of this variable which can be passed to the 'EvaluateRequest' to fetch the variable's value. */
+	std::optional<std::string> evaluateName;
+
+	/* If variablesReference is > 0, the variable is structured and its children can be retrieved by passing variablesReference to the VariablesRequest. */
+	unsigned variablesReference = 0;
+
+	/**
+		The number of named child variables.
+		The client can use this optional information to present the children in a paged UI and fetch them in chunks.
+	*/
+	std::optional<unsigned> namedVariables;
+
+	/**
+		The number of indexed child variables.
+		The client can use this optional information to present the children in a paged UI and fetch them in chunks.
+	*/
+	std::optional<unsigned> indexedVariables;
+
+	/**
+		Optional memory reference for the variable if the variable represents executable code, such as a function pointer.
+		This attribute is only required if the client has passed the value true for the 'supportsMemoryReferences' capability of the 'initialize' request.
+	*/
+	std::optional<std::string> memoryReference;
+
+	Variable() = default;
+
+	Variable(unsigned refId, std::string_view variableName, std::string_view variableValue = {});
+};
+
+
+/* Response to 'scopes' request. */
+struct ScopesResponseBody 
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(scopes)
+		)
+	)
+#pragma endregion
+
+	/* The scopes of the stackframe. If the array has length zero, there are no scopes available. */
+	std::vector<Scope> scopes;
+};
+
+
+/* Arguments for 'variables' request. */
+struct VariablesArguments
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(variablesReference),
+			CLASS_FIELD(filter),
+			CLASS_FIELD(start),
+			CLASS_FIELD(count),
+			CLASS_FIELD(format)
+		)
+	)
+#pragma endregion
+
+	/* The Variable reference. */
+	unsigned variablesReference;
+
+	/* 
+		Optional filter to limit the child variables to either named or indexed. If omitted, both types are fetched.
+		'indexed' | 'named'
+	*/
+	std::optional<std::string> filter;
+
+	/* The index of the first variable to return; if omitted children start at 0. */
+	std::optional<unsigned> start;
+
+	/* The number of variables to return. If count is missing or 0, all variables are returned. */
+	std::optional<unsigned> count;
+
+	/*
+		Specifies details on how to format the Variable values.
+		The attribute is only honored by a debug adapter if the capability 'supportsValueFormattingOptions' is true.
+	*/
+	std::optional<ValueFormat> format;
+};
+
+
+/* Response to 'variables' request. */
+struct VariablesResponseBody
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(variables)
+		)
+	)
+#pragma endregion
+
+	/* All (or a range) of variables for the given variable reference. */
+	std::vector<Variable> variables;
 };
 
 } // namespace Runtime::Dap

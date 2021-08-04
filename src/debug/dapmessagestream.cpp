@@ -1,21 +1,20 @@
 //◦ Playrix ◦
-#include "lua-toolkit/debug/commandsstream.h"
+#include "lua-toolkit/debug/dapmessagestream.h"
 #include "remoting/httpstream.h"
 
 #include <runtime/com/comclass.h>
 #include <runtime/serialization/json.h>
 
-namespace Lua::Debug {
+namespace Runtime::Debug {
 
-using namespace Runtime;
 using namespace Runtime::Async;
 
 /**
 * 
 */
-class CommandsStreamImpl final : public CommandsStream
+class CommandsStreamImpl final : public DapMessageStream
 {
-	COMCLASS_(CommandsStream)
+	COMCLASS_(DapMessageStream)
 
 public:
 	CommandsStreamImpl(ComPtr<Io::AsyncReader> stream): _bytesStream(std::move(stream))
@@ -25,23 +24,9 @@ public:
 
 private:
 
-	Task<RuntimeReadonlyDictionary::Ptr> GetFrontendCommand() override {
+	Task<RuntimeReadonlyDictionary::Ptr> GetDapMessage() override {
 
-		HttpStream::Packet packet;
-
-		while (!packet)
-		{
-			packet = _httpStream.GetNextPacket();
-			if (!packet) {
-				Assert(_bytesStream);
-				auto bytes = co_await _bytesStream->read();
-				if (!bytes) {
-					co_return nothing;
-				}
-
-				_httpStream.AppendBytes(bytes.toReadOnly());
-			}
-		}
+		HttpStream::Packet packet = co_await HttpStream::ReadHttpPacket(_httpStream, *_bytesStream);
 
 		if (!packet) {
 			co_return nothing;
@@ -56,7 +41,7 @@ private:
 		co_return *Serialization::JsonParseString(packet.body);
 	}
 
-	Task<> SendFrontendCommand(Runtime::RuntimeReadonlyDictionary::Ptr command) override {
+	Task<> SendDapMessage(Runtime::RuntimeReadonlyDictionary::Ptr command) override {
 		Assert(_bytesStream);
 
 		if (Io::AsyncWriter* const asyncWriter = _bytesStream->as<Io::AsyncWriter*>()) {
@@ -73,8 +58,8 @@ private:
 
 
 /* -------------------------------------------------------------------------- */
-CommandsStream::Ptr CommandsStream::Create(Runtime::ComPtr<Runtime::Io::AsyncReader> stream) {
-	return Com::createInstance<CommandsStreamImpl, CommandsStream>(std::move(stream));
+DapMessageStream::Ptr DapMessageStream::Create(ComPtr<Io::AsyncReader> stream) {
+	return Com::createInstance<CommandsStreamImpl, DapMessageStream>(std::move(stream));
 }
 
-} // namespace Lua::Debug
+} // namespace Runtime::Debug

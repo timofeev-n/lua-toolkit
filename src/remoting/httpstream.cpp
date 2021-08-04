@@ -6,6 +6,7 @@
 
 namespace Runtime {
 
+
 /* -------------------------------------------------------------------------- */
 void HttpStream::AppendBytes(ReadOnlyBuffer bytes) {
 	PopLastPacketBytes();
@@ -87,6 +88,26 @@ Async::Task<> HttpStream::SendHttpJsonPacket(RuntimeValue::Ptr bodyValue, std::s
 		Halt(exception.what());
 	}
 }
+
+Async::Task<HttpStream::Packet> HttpStream::ReadHttpPacket(HttpStream& httpStream, Io::AsyncReader& bytesStream) {
+	Packet packet;
+
+	while (!packet) {
+		packet = httpStream.GetNextPacket();
+		if (!packet) {
+			auto bytes = co_await bytesStream.read();
+			if (!bytes) {
+				break;
+			}
+
+			httpStream.AppendBytes(bytes.toReadOnly());
+		}
+	}
+
+	co_return packet;
+}
+
+	
 
 /* -------------------------------------------------------------------------- */
 HttpStream::Packet::Packet() = default;

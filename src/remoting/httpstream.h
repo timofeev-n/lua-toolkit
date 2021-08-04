@@ -1,6 +1,7 @@
 //◦ Playrix ◦
 #pragma once
 #include <runtime/io/asyncwriter.h>
+#include <runtime/io/asyncreader.h>
 #include <runtime/memory/bytesbuffer.h>
 #include <runtime/remoting/httpparser.h>
 #include <runtime/serialization/runtimevalue.h>
@@ -26,6 +27,8 @@ public:
 	void AppendBytes(ReadOnlyBuffer bytes);
 
 	Packet GetNextPacket();
+
+	static Async::Task<Packet> ReadHttpPacket(HttpStream& httpStream, Io::AsyncReader& bytesStream);
 
 	static Async::Task<> SendHttpJsonPacket(RuntimeValue::Ptr, std::string_view path, Io::AsyncWriter& stream);
 

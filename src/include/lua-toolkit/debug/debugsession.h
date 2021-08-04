@@ -1,20 +1,39 @@
 //◦ Playrix ◦
 #pragma once
-#include <lua-toolkit/debug/commandsstream.h>
+#include <lua-toolkit/debug/adapterprotocol.h>
+#include <lua-toolkit/debug/dapmessagestream.h>
 #include <lua-toolkit/debug/debugsessioncontroller.h>
+#include <lua-toolkit/debug/stacktraceprovider.h>
 
-namespace Lua::Debug {
+#include <variant>
 
-struct ABSTRACT_TYPE DebugSession : Runtime::IRefCounted
+namespace Runtime::Debug {
+
+
+enum class ExecutionMode
 {
-	using Ptr = Runtime::ComPtr<DebugSession>;
+	Continue,
+	StepIn,
+	StepOut
+};
 
-	static DebugSession::Ptr Create(CommandsStream::Ptr, DebugSessionController::Ptr);
 
-	virtual Runtime::Async::Task<> Run();
+struct ABSTRACT_TYPE DebugSession : IRefCounted
+{
+	using Ptr = ComPtr<DebugSession>;
 
-	virtual CommandsStream& GetCommandsStream() const = 0;
+
+
+	static DebugSession::Ptr Create(DapMessageStream::Ptr, DebugSessionController::Ptr);
+
+	virtual Async::Task<> Run();
+
+	virtual bool PauseIsRequested() const = 0;
+
+	virtual DapMessageStream& GetCommandsStream() const = 0;
+
+	virtual ExecutionMode StopExecution(Dap::StoppedEventBody ev, StackTraceProvider::Ptr) = 0;
 
 };
 
-}
+} // namespace Runtime::Debug
