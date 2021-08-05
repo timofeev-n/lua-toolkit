@@ -22,12 +22,12 @@ class DebugSessionImpl final : public DebugSession
 	COMCLASS_(DebugSession)
 
 public:
-	DebugSessionImpl(DapMessageStream::Ptr commandsStream, DebugSessionController::Ptr controller): _commandsStream(std::move(commandsStream)), _controller(std::move(controller))
+	DebugSessionImpl(DapMessageStream::Ptr commandsStream, DebugSessionController::Ptr controller): _messageStream(std::move(commandsStream)), _controller(std::move(controller))
 	{
-		Assert(_commandsStream);
+		Assert(_messageStream);
 		Assert(_controller);
 
-		// _controller->SetMessageStream(_commandsStream);
+		// _controller->SetMessageStream(_messageStream);
 	}
 
 private:
@@ -36,6 +36,7 @@ private:
 	{
 		Scheduler::Ptr scheduler;
 		StackTraceProvider::Ptr stackTraceProvider;
+		std::optional<ContinueExecutionMode> continueMode;
 
 		StoppedExectionState(Scheduler::Ptr scheduler_, StackTraceProvider::Ptr stackTraceProvider_): scheduler(std::move(scheduler_)), stackTraceProvider(std::move(stackTraceProvider_))
 		{}
@@ -49,7 +50,7 @@ private:
 		co_await RuntimeCore::instance().poolScheduler();
 
 		do {
-			const ReadonlyDynamicObject message {co_await _commandsStream->GetDapMessage()};
+			const ReadonlyDynamicObject message {co_await _messageStream->GetDapMessage()};
 
 			if (!message) {
 				break;
@@ -80,6 +81,12 @@ private:
 					else if (Strings::icaseEqual(request.command, "disconnect"))
 					{
 						_isClosed = true;
+
+						if (_stoppedState) {
+							_stoppedState->continueMode = ContinueExecutionMode::Stopped;
+							_stoppedState->scheduler->as<Disposable&>().dispose();
+						}
+
 						co_await _controller->Disconnect();
 					}
 					else if (Strings::icaseEqual(request.command, "setBreakpoints"))
@@ -92,7 +99,11 @@ private:
 					}
 					else if (Strings::icaseEqual(request.command, "setFunctionBreakpoints"))
 					{
+						auto args = RuntimeValueCast<Dap::SetFunctionBreakpointsArguments>(request.arguments);
 
+						Dap::SetBreakpointsResponseBody body;
+						body.breakpoints = co_await _controller->SetFunctionBreakpoints(std::move(args));
+						response.body = runtimeValueCopy(std::move(body));
 					}
 					else if (Strings::icaseEqual(request.command, "threads"))
 					{
@@ -152,15 +163,35 @@ private:
 					}
 					else if (Strings::icaseEqual(request.command, "continue"))
 					{
+						Assert(_stoppedState);
+						Assert(!_stoppedState->continueMode);
 
+						_stoppedState->continueMode = ContinueExecutionMode::Continue;
+						_stoppedState->scheduler->as<Disposable&>().dispose();
 					}
 					else if (Strings::icaseEqual(request.command, "next"))
 					{
+						Assert(_stoppedState);
+						Assert(!_stoppedState->continueMode);
 
+						_stoppedState->continueMode = ContinueExecutionMode::Step;
+						_stoppedState->scheduler->as<Disposable&>().dispose();
+					}
+					else if (Strings::icaseEqual(request.command, "stepIn"))
+					{
+						Assert(_stoppedState);
+						Assert(!_stoppedState->continueMode);
+
+						_stoppedState->continueMode = ContinueExecutionMode::StepIn;
+						_stoppedState->scheduler->as<Disposable&>().dispose();
 					}
 					else if (Strings::icaseEqual(request.command, "stepOut"))
 					{
+						Assert(_stoppedState);
+						Assert(!_stoppedState->continueMode);
 
+						_stoppedState->continueMode = ContinueExecutionMode::StepOut;
+						_stoppedState->scheduler->as<Disposable&>().dispose();
 					}
 				}
 				catch (const std::exception& exception) {
@@ -168,7 +199,7 @@ private:
 					response.SetError(exception.what());
 				}
 
-				co_await _commandsStream->SendDapMessage(runtimeValueRef(response));
+				co_await _messageStream->SendDapMessage(runtimeValueRef(response));
 			}
 			else {
 			}
@@ -181,13 +212,17 @@ private:
 	}
 
 	DapMessageStream& GetCommandsStream() const override {
-		Assert(_commandsStream);
+		Assert(_messageStream);
 
-		return *_commandsStream;
+		return *_messageStream;
 	}
 
 
-	ExecutionMode StopExecution(Dap::StoppedEventBody ev, StackTraceProvider::Ptr stackTraceProvider) override {
+	ContinueExecutionMode StopExecution(Dap::StoppedEventBody ev, StackTraceProvider::Ptr stackTraceProvider) override {
+		SCOPE_Leave {
+			_stoppedState.reset();
+		};
+
 		Assert(!_stoppedState);
 		Assert(stackTraceProvider);
 
@@ -198,11 +233,13 @@ private:
 		Dap::GenericEventMessage<Dap::StoppedEventBody> eventMessage(NextSeqId(), "stopped");
 		eventMessage.body = std::move(ev);
 
-		_commandsStream->SendDapMessage(runtimeValueCopy(std::move(eventMessage))).detach();
+		_messageStream->SendDapMessage(runtimeValueCopy(std::move(eventMessage))).detach();
 
 		scheduler->Execute();
 
-		return ExecutionMode::Continue;
+		Assert(_stoppedState && _stoppedState->continueMode);
+
+		return *_stoppedState->continueMode;
 	}
 
 	unsigned NextSeqId() {
@@ -210,7 +247,7 @@ private:
 	}
 
 
-	DapMessageStream::Ptr _commandsStream;
+	DapMessageStream::Ptr _messageStream;
 	DebugSessionController::Ptr _controller;
 	std::atomic<unsigned> _seqId{1ui32};
 	bool _isClosed = false;

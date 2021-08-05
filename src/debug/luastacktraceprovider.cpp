@@ -83,11 +83,13 @@ std::vector<Dap::Scope> LuaStackTraceProvider::StackFrameEntry::GetScopes(LuaSta
 		do
 		{
 			const char* const name = lua_getlocal(provider._lua, ar, ++n);
-			if (name == nullptr) {
+			if (name == nullptr){
 				break;
 			}
 
-			localsVar.AddChild(provider, name, n);
+			if (std::string_view{name}.find( "(*") != 0) {
+				localsVar.AddChild(provider, name, n);
+			}
 
 			lua_pop(provider._lua, 1);
 		}
@@ -192,8 +194,6 @@ const Dap::Variable& LuaStackTraceProvider::VariableEntry::GetVariable(LuaStackT
 				}
 				else if (valueType == LUA_TTABLE) {
 
-					bool isArray = true;
-
 					lua_pushnil(l);
 					while (lua_next(l, -2) != 0) {
 
@@ -202,14 +202,14 @@ const Dap::Variable& LuaStackTraceProvider::VariableEntry::GetVariable(LuaStackT
 						const int keyType = lua_type(l, KeyIndex);
 
 						if (keyType == LUA_TNUMBER) {
-							const auto index = lua_tonumber(l, KeyIndex);
+							const int index = static_cast<int>(lua_tointeger(l, KeyIndex));
 							this->AddChild(provider, index);
 						}
 						else if (keyType == LUA_TSTRING) {
-							isArray = false;
 							size_t len;
 							const char* const value = lua_tolstring(l, KeyIndex, &len);
-							this->AddChild(provider, std::string_view{value, len});
+							std::string_view name{value, len};
+							this->AddChild(provider, name);
 						}
 						else {
 							// Unsupported index type
@@ -218,14 +218,7 @@ const Dap::Variable& LuaStackTraceProvider::VariableEntry::GetVariable(LuaStackT
 						lua_pop(l, 1);
 					}
 
-					if (isArray) {
-						variable.type = "array";
-						variable.indexedVariables = static_cast<unsigned>(_children.size());
-					}
-					else {
-						variable.type = "object";
-						variable.namedVariables = static_cast<unsigned>(_children.size());
-					}
+					variable.type = _namedChildren.empty() && !_indexedChildren.empty() ? "array" : "object";
 				}
 				else if (valueType == LUA_TFUNCTION) {
 
@@ -243,11 +236,18 @@ const Dap::Variable& LuaStackTraceProvider::VariableEntry::GetVariable(LuaStackT
 		}
 
 
-		if (!_children.empty()) {
-			variable.namedVariables = static_cast<unsigned>(_children.size());
+		if (_namedChildren.empty() && _indexedChildren.empty()) {
+			variable.variablesReference = 0;
 		}
 		else {
-			variable.variablesReference = 0;
+			if (!_namedChildren.empty()) {
+				variable.namedVariables = static_cast<unsigned>(_namedChildren.size());
+			}
+
+			if (!_indexedChildren.empty()) {
+				variable.indexedVariables = static_cast<unsigned>(_indexedChildren.size());
+			}
+
 		}
 	}
 
@@ -257,23 +257,31 @@ const Dap::Variable& LuaStackTraceProvider::VariableEntry::GetVariable(LuaStackT
 
 void LuaStackTraceProvider::VariableEntry::AddChild(LuaStackTraceProvider& provider, std::string_view name, std::optional<int> indexOnFrame) {
 	const auto childId = provider.NewVariable(*this, name, indexOnFrame);
-	_children.push_back(childId);
+	_namedChildren.push_back(childId);
 }
 
 void LuaStackTraceProvider::VariableEntry::AddChild(LuaStackTraceProvider& provider, int index) {
 	const auto childId = provider.NewVariable(*this, index);
-	_children.push_back(childId);
+	_indexedChildren.push_back(childId);
 }
 
 
-std::vector<Dap::Variable> LuaStackTraceProvider::VariableEntry::GetChildren(LuaStackTraceProvider& provider) {
+std::vector<Dap::Variable> LuaStackTraceProvider::VariableEntry::GetChildren(LuaStackTraceProvider& provider, const Dap::VariablesArguments& args) {
 
 	std::vector<Dap::Variable> variables;
-	variables.reserve(_children.size());
+	variables.reserve(_indexedChildren.size() + _namedChildren.size());
 
-	std::transform(_children.begin(), _children.end(), std::back_inserter(variables), [&provider](unsigned variableId) {
-		return provider.GetVariableEntry(variableId).GetVariable(provider);
-	});
+	if (args.filter.empty() || args.filter == "indexed") {
+		std::transform(_indexedChildren.begin(), _indexedChildren.end(), std::back_inserter(variables), [&provider](unsigned variableId) {
+			return provider.GetVariableEntry(variableId).GetVariable(provider);
+		});
+	}
+
+	if (args.filter.empty() || args.filter == "named") {
+		std::transform(_namedChildren.begin(), _namedChildren.end(), std::back_inserter(variables), [&provider](unsigned variableId) {
+			return provider.GetVariableEntry(variableId).GetVariable(provider);
+		});
+	}
 
 	return variables;
 }
@@ -352,7 +360,7 @@ std::vector<Dap::Scope> LuaStackTraceProvider::GetScopes(unsigned frameId) {
 
 std::vector<Dap::Variable> LuaStackTraceProvider::GetVariables(Runtime::Dap::VariablesArguments arg) {
 	auto& variableEntry = GetVariableEntry(arg.variablesReference);
-	return variableEntry.GetChildren(*this);
+	return variableEntry.GetChildren(*this, arg);
 }
 
 

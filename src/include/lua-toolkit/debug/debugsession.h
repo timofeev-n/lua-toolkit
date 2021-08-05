@@ -10,11 +10,13 @@
 namespace Runtime::Debug {
 
 
-enum class ExecutionMode
+enum class ContinueExecutionMode
 {
 	Continue,
+	Step,
 	StepIn,
-	StepOut
+	StepOut,
+	Stopped
 };
 
 
@@ -32,7 +34,7 @@ struct ABSTRACT_TYPE DebugSession : IRefCounted
 
 	virtual DapMessageStream& GetCommandsStream() const = 0;
 
-	virtual ExecutionMode StopExecution(Dap::StoppedEventBody ev, StackTraceProvider::Ptr) = 0;
+	virtual ContinueExecutionMode StopExecution(Dap::StoppedEventBody ev, StackTraceProvider::Ptr) = 0;
 
 };
 

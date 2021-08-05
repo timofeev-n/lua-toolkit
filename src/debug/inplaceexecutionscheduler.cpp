@@ -16,7 +16,15 @@ void InplaceExecutionScheduler::scheduleInvocation(Invocation invocation) noexce
 	_signal.set();
 }
 
+
 void InplaceExecutionScheduler::waitAnyActivity() noexcept {
+}
+
+
+void InplaceExecutionScheduler::dispose() {
+	lock_(_mutex);
+	_isClosed = true;
+	_signal.set();
 }
 
 

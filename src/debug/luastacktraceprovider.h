@@ -71,7 +71,7 @@ private:
 
 		void AddChild(LuaStackTraceProvider& provider, int);
 
-		std::vector<Runtime::Dap::Variable> GetChildren(LuaStackTraceProvider& provider);
+		std::vector<Runtime::Dap::Variable> GetChildren(LuaStackTraceProvider& provider, const Runtime::Dap::VariablesArguments&);
 
 
 	private:
@@ -88,7 +88,8 @@ private:
 
 
 		std::optional<Runtime::Dap::Variable> _variableInfo;
-		std::vector<unsigned> _children;
+		std::vector<unsigned> _indexedChildren;
+		std::vector<unsigned> _namedChildren;
 	};
 
 

@@ -25,6 +25,8 @@ struct ABSTRACT_TYPE DebugSessionController : IRefCounted
 
 	virtual Async::Task<std::vector<Dap::Breakpoint>> SetBreakpoints(Dap::SetBreakpointsArguments) = 0;
 
+	virtual Async::Task<std::vector<Dap::Breakpoint>> SetFunctionBreakpoints(Dap::SetFunctionBreakpointsArguments) = 0;
+
 	virtual Async::Task<std::vector<Dap::Thread>> GetThreads() = 0;
 };
 

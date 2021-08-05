@@ -6,8 +6,12 @@
 #include <runtime/serialization/serialization.h>
 #include <runtime/meta/classinfo.h>
 //#include <boost/optional.hpp>
-#include <optional>
 #include <limits>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
 
 namespace Runtime::Dap {
 
@@ -351,14 +355,18 @@ struct Source {
 	*/
 	RuntimeValue::Ptr adapterData;
 
-	/**
-		The checksums associated with this file.
-	*/
+	/* The checksums associated with this file. */
 	std::vector<Checksum>checksums;
+
 
 	Source() = default;
 
 	Source(std::string_view sourcePath);
+
+private:
+	friend bool operator == (const Source& left, const Source& right);
+
+	friend bool operator == (const Source& left, std::string_view);
 };
 
 /**
@@ -443,32 +451,59 @@ struct SourceBreakpoint
 	)
 #pragma endregion
 
-	/**
-		The source line of the breakpoint or logpoint.
-	*/
+	/* The source line of the breakpoint or logpoint. */
 	unsigned line;
 
-	/**
-		An optional source column of the breakpoint.
-	*/
+	/* An optional source column of the breakpoint. */
 	std::optional<unsigned> column;
 
-	/** An optional expression for conditional breakpoints.
-			It is only honored by a debug adapter if the capability 'supportsConditionalBreakpoints' is true.
+	/**
+		An optional expression for conditional breakpoints.
+		It is only honored by a debug adapter if the capability 'supportsConditionalBreakpoints' is true.
 	*/
 	std::string condition;
 
+	/**
+		An optional expression that controls how many hits of the breakpoint are ignored.
+		The backend is expected to interpret the expression as needed.
+		The attribute is only honored by a debug adapter if the capability 'supportsHitConditionalBreakpoints' is true.
+	*/
+	std::string hitCondition;
+
+	/**
+		If this attribute exists and is non-empty, the backend must not 'break' (stop)
+		but log the message instead. Expressions within {} are interpolated.
+		The attribute is only honored by a debug adapter if the capability 'supportsLogPoints' is true.
+	*/
+	std::string logMessage;
+};
+
+
+/* Properties of a breakpoint passed to the setFunctionBreakpoints request. */
+struct FunctionBreakpoint
+{
+#pragma region Class info
+	CLASS_INFO(
+		CLASS_FIELDS(
+			CLASS_FIELD(name),
+			CLASS_FIELD(condition),
+			CLASS_FIELD(hitCondition)
+		)
+	)
+#pragma endregion
+
+	/* The name of the function. */
+	std::string name;
+	/**
+		An optional expression for conditional breakpoints.
+		It is only honored by a debug adapter if the capability 'supportsConditionalBreakpoints' is true.
+*/
+	std::string condition;
 	/** An optional expression that controls how many hits of the breakpoint are ignored.
 			The backend is expected to interpret the expression as needed.
 			The attribute is only honored by a debug adapter if the capability 'supportsHitConditionalBreakpoints' is true.
 	*/
 	std::string hitCondition;
-
-	/** If this attribute exists and is non-empty, the backend must not 'break' (stop)
-			but log the message instead. Expressions within {} are interpolated.
-			The attribute is only honored by a debug adapter if the capability 'supportsLogPoints' is true.
-	*/
-	std::string logMessage;
 };
 
 
@@ -530,11 +565,12 @@ struct SetBreakpointsArguments
 	std::optional<bool> sourceModified;
 };
 
-/** Response to 'setBreakpoints' request.
-		Returned is information about each breakpoint created by this request.
-		This includes the actual code location and whether the breakpoint could be verified.
-		The breakpoints returned are in the same order as the elements of the 'breakpoints'
-		(or the deprecated 'lines') array in the arguments.
+/**
+	Response to 'setBreakpoints' request.
+	Returned is information about each breakpoint created by this request.
+	This includes the actual code location and whether the breakpoint could be verified.
+	The breakpoints returned are in the same order as the elements of the 'breakpoints'
+	(or the deprecated 'lines') array in the arguments.
 */
 struct SetBreakpointsResponseBody
 {
@@ -553,21 +589,43 @@ CLASS_INFO(
 };
 
 
-//struct SetBreakpointsResponse : ResponseMessage
-//{
-//#pragma region Class info
-//	CLASS_INFO(
-//		CLASS_BASE(ResponseMessage),
-//
-//		CLASS_FIELDS(
-//			CLASS_FIELD(body)
-//		)
-//	)
-//#pragma endregion
-//
-//	 // using ResponseMessage::ResponseMessage;
-//	SetBreakpointsResponseBody body;
-//};
+/**
+	SetFunctionBreakpoints request; value of command field is 'setFunctionBreakpoints'.
+	Replaces all existing function breakpoints with new function breakpoints.
+	To clear all function breakpoints, specify an empty array.
+	When a function breakpoint is hit, a 'stopped' event (with reason 'function breakpoint') is generated.
+	Clients should only call this request if the capability 'supportsFunctionBreakpoints' is true.
+*/
+struct SetFunctionBreakpointsArguments
+{
+#pragma region Class info
+CLASS_INFO(
+	CLASS_FIELDS(
+		CLASS_FIELD(breakpoints)
+	)
+)
+#pragma endregion
+
+	std::vector<FunctionBreakpoint> breakpoints;
+};
+
+
+/**
+	Response to 'setFunctionBreakpoints' request.
+	Returned is information about each breakpoint created by this request.
+*/
+struct SetFunctionBreakpointsResponseResponseBody
+{
+#pragma region Class info
+CLASS_INFO(
+	CLASS_FIELDS(
+		CLASS_FIELD(breakpoints)
+	)
+)
+#pragma endregion
+	/* Information about the breakpoints. The array elements correspond to the elements of the 'breakpoints' array. */
+	std::vector<Breakpoint> breakpoints;
+};
 
 
 struct ThreadsResponseBody
@@ -639,6 +697,13 @@ struct StoppedEventBody
 			- Multiple function breakpoints with different function names map to the same location.
 	*/
 	std::optional<std::vector<unsigned>> hitBreakpointIds;
+
+	
+	StoppedEventBody() = default;
+
+	StoppedEventBody(std::string_view eventReason, std::optional<unsigned> eventThread = std::nullopt);
+
+	StoppedEventBody(std::string_view eventReason, std::string_view eventDescription, std::optional<unsigned> eventThread = std::nullopt);
 };
 
 
@@ -1028,7 +1093,7 @@ struct VariablesArguments
 		Optional filter to limit the child variables to either named or indexed. If omitted, both types are fetched.
 		'indexed' | 'named'
 	*/
-	std::optional<std::string> filter;
+	std::string filter;
 
 	/* The index of the first variable to return; if omitted children start at 0. */
 	std::optional<unsigned> start;
